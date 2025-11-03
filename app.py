@@ -1,0 +1,253 @@
+"""
+Flask Application - Main backend server
+Provides API endpoints and serves the web dashboard
+"""
+
+from flask import Flask, render_template, jsonify, request, Response, send_file
+from flask_cors import CORS
+from packet_capture import PacketCapture
+import json
+import csv
+import io
+from datetime import datetime
+import threading
+import time
+
+app = Flask(__name__)
+CORS(app)
+
+# Initialize packet capture
+capture = PacketCapture()
+
+# Global state
+capture_lock = threading.Lock()
+
+
+@app.route('/')
+def index():
+    """Serve the main dashboard"""
+    return render_template('index.html')
+
+
+@app.route('/api/interfaces', methods=['GET'])
+def get_interfaces():
+    """Get available network interfaces"""
+    interfaces = capture.get_interfaces()
+    return jsonify({'interfaces': interfaces})
+
+
+@app.route('/api/capture/start', methods=['POST'])
+def start_capture():
+    """Start packet capture"""
+    with capture_lock:
+        data = request.json or {}
+        interface = data.get('interface', '')
+        filter_string = data.get('filter', '')
+        
+        # Set interface (even if empty, it will be converted to None)
+        capture.set_interface(interface)
+        # Set filter (even if empty, it will be converted to None)
+        capture.set_filter(filter_string)
+        
+        # Get available interfaces for debugging
+        available_interfaces = capture.get_interfaces()
+        print(f"Available interfaces: {available_interfaces}")
+        print(f"Selected interface: {interface or 'auto-detect'}")
+        print(f"Filter: {filter_string or 'none'}")
+            
+        if capture.start_capture():
+            return jsonify({
+                'status': 'started', 
+                'message': 'Capture started successfully',
+                'available_interfaces': available_interfaces,
+                'selected_interface': interface or 'auto-detect'
+            })
+        else:
+            return jsonify({'status': 'error', 'message': 'Capture already running'}), 400
+
+
+@app.route('/api/capture/stop', methods=['POST'])
+def stop_capture():
+    """Stop packet capture"""
+    with capture_lock:
+        capture.stop_capture()
+        return jsonify({'status': 'stopped', 'message': 'Capture stopped successfully'})
+
+
+@app.route('/api/capture/status', methods=['GET'])
+def capture_status():
+    """Get capture status"""
+    stats = capture.get_stats() if capture.is_capturing else {}
+    stats['is_capturing'] = capture.is_capturing
+    stats['total_packets'] = stats.get('total_packets', 0)
+    
+    # Include error if any
+    error = capture.get_last_error()
+    if error:
+        stats['error'] = error
+    
+    return jsonify(stats)
+
+
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
+    """Get current statistics"""
+    stats = capture.get_stats()
+    stats['is_capturing'] = capture.is_capturing
+    return jsonify(stats)
+
+
+@app.route('/api/packets/recent', methods=['GET'])
+def get_recent_packets():
+    """Get recent packets"""
+    limit = request.args.get('limit', 50, type=int)
+    packets = capture.get_recent_packets(limit)
+    return jsonify({'packets': packets})
+
+
+@app.route('/api/anomalies', methods=['GET'])
+def get_anomalies():
+    """Get detected anomalies"""
+    limit = request.args.get('limit', 20, type=int)
+    anomalies = capture.get_anomalies(limit)
+    return jsonify({'anomalies': anomalies})
+
+
+@app.route('/api/stream')
+def stream_data():
+    """Server-Sent Events stream for real-time updates"""
+    def generate():
+        while True:
+            if capture.is_capturing:
+                stats = capture.get_stats()
+                # Include error if any
+                error = capture.get_last_error()
+                if error:
+                    stats['error'] = error
+                
+                data = {
+                    'stats': stats,
+                    'recent_packets': capture.get_recent_packets(10),
+                    'anomalies': capture.get_anomalies(5),
+                    'is_capturing': True
+                }
+            else:
+                error = capture.get_last_error()
+                data = {
+                    'is_capturing': False,
+                    'stats': {'error': error} if error else {},
+                    'recent_packets': [],
+                    'anomalies': []
+                }
+            
+            yield f"data: {json.dumps(data)}\n\n"
+            time.sleep(1)  # Update every second
+            
+    return Response(generate(), mimetype='text/event-stream')
+
+
+@app.route('/api/export/csv', methods=['GET'])
+def export_csv():
+    """Export recent packets as CSV"""
+    packets = capture.get_recent_packets(1000)
+    
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=[
+        'timestamp', 'protocol', 'src_ip', 'dst_ip', 'src_port', 'dst_port', 
+        'size', 'flags', 'dns_query', 'http_method', 'http_host'
+    ])
+    writer.writeheader()
+    writer.writerows(packets)
+    
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=traffic_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'}
+    )
+
+
+@app.route('/api/export/json', methods=['GET'])
+def export_json():
+    """Export recent packets as JSON"""
+    packets = capture.get_recent_packets(1000)
+    data = {
+        'export_time': datetime.now().isoformat(),
+        'total_packets': len(packets),
+        'packets': packets,
+        'stats': capture.get_stats(),
+        'anomalies': capture.get_anomalies()
+    }
+    
+    output = io.StringIO()
+    json.dump(data, output, indent=2)
+    output.seek(0)
+    
+    return Response(
+        output.getvalue(),
+        mimetype='application/json',
+        headers={'Content-Disposition': f'attachment; filename=traffic_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'}
+    )
+
+
+@app.route('/api/export/pcap', methods=['GET'])
+def export_pcap():
+    """
+    Export captured packets as PCAP file
+    Note: This requires storing raw packets during capture.
+    """
+    try:
+        from scapy.all import wrpcap
+        import tempfile
+        import os
+        import atexit
+        
+        # Get stored packets from capture
+        packets = capture.get_stored_packets()
+        
+        if not packets:
+            return jsonify({'error': 'No packets available for export. Start capture and wait for packets.'}), 400
+        
+        # Create temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pcap')
+        temp_file.close()
+        
+        # Write packets to PCAP file
+        wrpcap(temp_file.name, packets)
+        
+        # Schedule cleanup after response
+        def cleanup():
+            try:
+                if os.path.exists(temp_file.name):
+                    os.unlink(temp_file.name)
+            except:
+                pass
+        
+        # Register cleanup
+        atexit.register(cleanup)
+        
+        # Clean up after a delay (allows download to complete)
+        import threading
+        def delayed_cleanup():
+            import time
+            time.sleep(60)  # Wait 60 seconds before cleanup
+            cleanup()
+        
+        threading.Thread(target=delayed_cleanup, daemon=True).start()
+        
+        return send_file(
+            temp_file.name,
+            mimetype='application/vnd.tcpdump.pcap',
+            as_attachment=True,
+            download_name=f'traffic_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pcap'
+        )
+    except Exception as e:
+        return jsonify({'error': f'PCAP export failed: {str(e)}'}), 500
+
+
+if __name__ == '__main__':
+    print("Starting Network Traffic Analyzer...")
+    print("Note: This application requires root/administrator privileges for packet capture.")
+    print("Open http://localhost:5000 in your browser")
+    app.run(debug=True, host='0.0.0.0', port=8080, threaded=True)
+
