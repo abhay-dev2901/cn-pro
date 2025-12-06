@@ -311,6 +311,9 @@ function updateDashboard(data) {
     if (data.anomalies) {
         updateAnomalies(data.anomalies);
     }
+    
+    // Update ML status
+    updateMLStatus(data.ml_available, data.ml_stats);
 }
 
 function updateMetrics(stats) {
@@ -363,15 +366,74 @@ function updateAnomalies(anomalies) {
     container.innerHTML = reversed.map(anomaly => {
         const severityClass = anomaly.severity?.toLowerCase() || 'medium';
         const time = new Date(anomaly.timestamp).toLocaleTimeString();
+        const isML = anomaly.detection_method === 'ml' || anomaly.type?.startsWith('ML:');
+        const icon = isML ? '🤖' : '🔍';
+        
+        // Handle both ML and rule-based anomalies
+        let details = '';
+        if (anomaly.ports_scanned) {
+            details = `Ports scanned: ${anomaly.ports_scanned}`;
+        } else if (anomaly.confidence) {
+            details = `Confidence: ${(anomaly.confidence * 100).toFixed(1)}%`;
+        }
+        
+        let destination = '';
+        if (anomaly.destination_ip) {
+            destination = ` → ${anomaly.destination_ip}`;
+            if (anomaly.destination_port) {
+                destination += `:${anomaly.destination_port}`;
+            }
+        }
         
         return `
             <div class="anomaly-item ${severityClass}">
-                <strong>${anomaly.type}</strong> - ${time}<br>
-                <small>Source: ${anomaly.source_ip}</small><br>
-                <small>Ports scanned: ${anomaly.ports_scanned} | Severity: ${anomaly.severity}</small>
+                <strong>${icon} ${anomaly.type}</strong> - ${time}<br>
+                <small>Source: ${anomaly.source_ip}${destination}</small><br>
+                <small>${details} | Severity: ${anomaly.severity || 'Medium'}</small>
+                ${anomaly.description ? `<br><small class="text-muted">${anomaly.description}</small>` : ''}
             </div>
         `;
     }).join('');
+}
+
+// Update ML status badge and threats count
+function updateMLStatus(mlAvailable, mlStats) {
+    const mlBadge = document.getElementById('ml-status-badge');
+    const mlThreatsCount = document.getElementById('ml-threats-count');
+    
+    if (mlBadge) {
+        if (mlAvailable && mlStats) {
+            const threats = mlStats.total_threats || 0;
+            if (threats > 0) {
+                mlBadge.className = 'badge bg-danger ms-2';
+                mlBadge.textContent = `🤖 ML: ${threats} threats`;
+            } else {
+                mlBadge.className = 'badge bg-success ms-2';
+                mlBadge.textContent = '🤖 ML Active';
+            }
+        } else if (mlAvailable) {
+            mlBadge.className = 'badge bg-warning ms-2';
+            mlBadge.textContent = '🤖 ML Loading...';
+        } else {
+            mlBadge.className = 'badge bg-secondary ms-2';
+            mlBadge.textContent = '🤖 ML Disabled';
+        }
+    }
+    
+    // Update threats count card
+    if (mlThreatsCount) {
+        const threats = mlStats?.total_threats || 0;
+        mlThreatsCount.textContent = threats;
+        
+        // Change color based on threat level
+        if (threats > 10) {
+            mlThreatsCount.className = 'card-title text-danger';
+        } else if (threats > 0) {
+            mlThreatsCount.className = 'card-title text-warning';
+        } else {
+            mlThreatsCount.className = 'card-title text-success';
+        }
+    }
 }
 
 function formatBytes(bytes) {

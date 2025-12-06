@@ -18,6 +18,7 @@
             <span class="navbar-brand mb-0 h1">🌐 Real-Time Network Traffic Analyzer</span>
             <span class="navbar-text text-white">
                 <span id="status-badge" class="badge bg-secondary">Stopped</span>
+                <span id="ml-status-badge" class="badge bg-secondary ms-2">🤖 ML Loading...</span>
             </span>
         </div>
     </nav>
@@ -52,7 +53,7 @@
 
         <!-- Metrics Row -->
         <div class="row mb-4">
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card text-center">
                     <div class="card-body">
                         <h6 class="card-subtitle mb-2 text-muted">Total Packets</h6>
@@ -60,7 +61,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card text-center">
                     <div class="card-body">
                         <h6 class="card-subtitle mb-2 text-muted">Throughput</h6>
@@ -68,7 +69,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card text-center">
                     <div class="card-body">
                         <h6 class="card-subtitle mb-2 text-muted">Packets/sec</h6>
@@ -76,11 +77,19 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card text-center">
                     <div class="card-body">
                         <h6 class="card-subtitle mb-2 text-muted">Total Data</h6>
                         <h2 class="card-title" id="total-bytes">0 MB</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card text-center border-danger">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">🤖 ML Threats</h6>
+                        <h2 class="card-title text-danger" id="ml-threats-count">0</h2>
                     </div>
                 </div>
             </div>
@@ -129,11 +138,11 @@
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header bg-warning">
-                        <h5 class="mb-0">🚨 Detected Anomalies</h5>
+                        <h5 class="mb-0">🚨 Threat Detection <small class="text-dark">(Rule-based + ML)</small></h5>
                     </div>
                     <div class="card-body" style="max-height: 400px; overflow-y: auto;">
                         <div id="anomalies-list">
-                            <p class="text-muted">No anomalies detected</p>
+                            <p class="text-muted">No threats detected</p>
                         </div>
                     </div>
                 </div>

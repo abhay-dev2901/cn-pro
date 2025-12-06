@@ -104,3 +104,39 @@ canvas {
     cursor: pointer;
 }
 
+/* ML Status Badge */
+#ml-status-badge {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+}
+
+/* Anomaly severity styles */
+.anomaly-item.low {
+    border-left-color: #17a2b8;
+    background-color: #d1ecf1;
+}
+
+.anomaly-item.critical {
+    border-left-color: #6f42c1;
+    background-color: #e2d5f8;
+}
+
+/* ML threat highlight */
+.anomaly-item.ml-threat {
+    border-left-color: #6610f2;
+    background-color: #e8daff;
+}
+
+/* ML Active indicator */
+.ml-active {
+    animation: ml-pulse 3s infinite;
+}
+
+@keyframes ml-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 5px rgba(13, 110, 253, 0);
+    }
+}
