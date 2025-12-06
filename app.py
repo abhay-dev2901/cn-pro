@@ -13,11 +13,29 @@ from datetime import datetime
 import threading
 import time
 
+# ML Integration
+try:
+    from ml.flask_integration import get_detector, analyze_packet_with_ml
+    ML_AVAILABLE = True
+    print("✅ ML module loaded successfully")
+except ImportError as e:
+    ML_AVAILABLE = False
+    print(f"⚠️ ML module not available: {e}")
+
 app = Flask(__name__)
 CORS(app)
 
 # Initialize packet capture
 capture = PacketCapture()
+
+# Initialize ML detector
+ml_detector = None
+if ML_AVAILABLE:
+    ml_detector = get_detector()
+    if ml_detector.is_ready:
+        print("✅ ML model loaded and ready for predictions")
+    else:
+        print("⚠️ ML model not trained. Run: python -m ml.training_pipeline --quick")
 
 # Global state
 capture_lock = threading.Lock()
@@ -113,6 +131,78 @@ def get_anomalies():
     return jsonify({'anomalies': anomalies})
 
 
+# ============== ML API Routes ==============
+
+@app.route('/api/ml/status', methods=['GET'])
+def ml_status():
+    """Get ML model status and statistics"""
+    if not ML_AVAILABLE:
+        return jsonify({
+            'available': False,
+            'error': 'ML module not installed'
+        })
+    
+    detector = get_detector()
+    return jsonify({
+        'available': True,
+        'model_loaded': detector.is_ready,
+        'model_name': detector.predictor.model_name if detector.is_ready else None,
+        'statistics': detector.get_statistics()
+    })
+
+
+@app.route('/api/ml/analyze', methods=['POST'])
+def ml_analyze():
+    """Analyze packet/flow data with ML model"""
+    if not ML_AVAILABLE:
+        return jsonify({'error': 'ML module not available'}), 503
+    
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    result = analyze_packet_with_ml(data)
+    return jsonify(result)
+
+
+@app.route('/api/ml/threats', methods=['GET'])
+def ml_threats():
+    """Get recent ML-detected threats"""
+    if not ML_AVAILABLE:
+        return jsonify({'error': 'ML module not available'}), 503
+    
+    limit = request.args.get('limit', 20, type=int)
+    detector = get_detector()
+    
+    return jsonify({
+        'threats': detector.get_recent_threats(limit),
+        'statistics': detector.get_statistics()
+    })
+
+
+@app.route('/api/ml/predict', methods=['POST'])
+def ml_predict():
+    """
+    Predict threat type for given features
+    Expects JSON with packet/flow features
+    """
+    if not ML_AVAILABLE:
+        return jsonify({'error': 'ML module not available'}), 503
+    
+    detector = get_detector()
+    if not detector.is_ready:
+        return jsonify({
+            'error': 'ML model not trained. Run: python -m ml.training_pipeline --quick'
+        }), 503
+    
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No features provided'}), 400
+    
+    result = detector.analyze_packet(data)
+    return jsonify(result)
+
+
 @app.route('/api/stream')
 def stream_data():
     """Server-Sent Events stream for real-time updates"""
@@ -131,13 +221,22 @@ def stream_data():
                     'anomalies': capture.get_anomalies(5),
                     'is_capturing': True
                 }
+                
+                # Add ML statistics if available
+                if ML_AVAILABLE and ml_detector and ml_detector.is_ready:
+                    data['ml_stats'] = ml_detector.get_statistics()
+                    data['ml_threats'] = ml_detector.get_recent_threats(5)
+                    data['ml_available'] = True
+                else:
+                    data['ml_available'] = False
             else:
                 error = capture.get_last_error()
                 data = {
                     'is_capturing': False,
                     'stats': {'error': error} if error else {},
                     'recent_packets': [],
-                    'anomalies': []
+                    'anomalies': [],
+                    'ml_available': ML_AVAILABLE
                 }
             
             yield f"data: {json.dumps(data)}\n\n"
