@@ -8,6 +8,7 @@ A lightweight, web-based Network Traffic Analyzer that captures and parses packe
 - **Interactive Dashboard**: Visual charts for protocol distribution, bandwidth, and metrics
 - **Metrics**: Throughput, latency, packet loss
 - **Anomaly Detection**: Port scan detection
+- **🤖 ML-Based Threat Detection**: DDoS, Brute Force, Port Scans, Web Attacks, Botnet, and more
 - **Export**: CSV, JSON, and PCAP formats
 - **User-Friendly**: Simple start/stop controls and filters
 
@@ -44,6 +45,32 @@ sudo python app.py
 7. Monitor detected anomalies (port scans)
 8. Export data as CSV, JSON, or PCAP formats
 
+## Machine Learning Module
+
+The project includes an ML module for advanced threat detection using the CICIDS2017 dataset.
+
+### Training the Model
+
+```bash
+# Quick training (~5 minutes)
+python -m ml.training_pipeline --quick
+
+# Full training (~30+ minutes)
+python -m ml.training_pipeline
+```
+
+### Supported Threat Types
+
+- **DDoS** - Distributed Denial of Service attacks
+- **DoS** - Denial of Service attacks
+- **Port Scan** - Port scanning reconnaissance
+- **Brute Force** - SSH/FTP/Web login attacks
+- **Web Attacks** - SQL Injection, XSS
+- **Botnet** - Bot network activity
+- **Infiltration** - Network infiltration attempts
+
+See `ml/README.md` for detailed documentation.
+
 ## Troubleshooting
 
 - **Permission Denied**: Packet capture requires root/administrator privileges. Use `sudo` on Linux/Mac.
@@ -58,7 +85,18 @@ CN Traffic Analyzer/
 ├── app.py                 # Flask backend
 ├── packet_capture.py      # Scapy packet capture logic
 ├── packet_analyzer.py     # Packet parsing and analysis
-├── anomaly_detector.py    # Anomaly detection (port scans)
+├── anomaly_detector.py    # Rule-based anomaly detection
+├── ml_anomaly_detector.py # ML-enhanced anomaly detection
+├── ml/                    # Machine Learning module
+│   ├── __init__.py
+│   ├── dataset_loader.py  # CICIDS2017 data loading
+│   ├── preprocessing.py   # Data preprocessing
+│   ├── training_pipeline.py # Model training
+│   ├── predict.py         # Prediction module
+│   ├── flask_integration.py # Flask integration
+│   ├── model.pkl          # Trained model (after training)
+│   └── preprocessor.pkl   # Fitted preprocessor
+├── MachineLearningCVE/    # CICIDS2017 dataset (CSV files)
 ├── static/
 │   ├── css/
 │   │   └── style.css
