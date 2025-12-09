@@ -84,12 +84,12 @@ class ThreatPredictor:
         preprocessor_path = os.path.join(self.model_dir, 'preprocessor.pkl')
         
         if not os.path.exists(model_path):
-            print(f"⚠️ Model not found at {model_path}")
+            print(f"Warning: Model not found at {model_path}")
             print("Please run training_pipeline.py first to train the model.")
             return
         
         if not os.path.exists(preprocessor_path):
-            print(f"⚠️ Preprocessor not found at {preprocessor_path}")
+            print(f"Warning: Preprocessor not found at {preprocessor_path}")
             print("Please run training_pipeline.py first.")
             return
         
@@ -103,12 +103,159 @@ class ThreatPredictor:
             self.preprocessor = DataPreprocessor.load(preprocessor_path)
             
             self.is_loaded = True
-            print(f"✅ Model loaded: {self.model_name}")
+            print(f"Model loaded: {self.model_name}")
             print(f"   Classes: {self.preprocessor.get_class_labels()}")
             
         except Exception as e:
-            print(f"❌ Error loading model: {e}")
+            print(f"Error loading model: {e}")
             self.is_loaded = False
+    
+    def _rule_based_detection(self, features: Dict) -> Optional[Dict]:
+        """
+        Rule-based threat detection as fallback/enhancement to ML model
+        Returns detection result if threat detected, None otherwise
+        
+        NOTE: These rules are designed for real-time packet capture where
+        flow statistics accumulate over time. Early packets in a flow
+        will have incomplete statistics.
+        """
+        # Extract features with defaults
+        dst_port = features.get('destination_port', 0)
+        flow_duration = features.get('flow_duration', 0)  # microseconds
+        total_fwd = features.get('total_fwd_packets', 0)
+        total_bwd = features.get('total_bwd_packets', 0)
+        total_packets = total_fwd + total_bwd
+        syn_count = features.get('syn_flag_count', 0)
+        ack_count = features.get('ack_flag_count', 0)
+        rst_count = features.get('rst_flag_count', 0)
+        fin_count = features.get('fin_flag_count', 0)
+        psh_count = features.get('psh_flag_count', 0)
+        flow_packets_ps = features.get('flow_packets_per_s', 0)
+        flow_bytes_ps = features.get('flow_bytes_per_s', 0)
+        fwd_packets_ps = features.get('fwd_packets_per_s', 0)
+        idle_mean = features.get('idle_mean', 0)
+        
+        # SSH Brute Force
+        if dst_port == 22:
+            return {
+                'prediction': 'BruteForce',
+                'confidence': 0.88,
+                'severity': 2,
+                'description': 'SSH Brute Force - attack on port 22 detected',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        
+        # FTP Brute Force
+        if dst_port == 21:
+            return {
+                'prediction': 'BruteForce',
+                'confidence': 0.86,
+                'severity': 2,
+                'description': 'FTP Brute Force - attack on port 21 detected',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        
+        # Telnet Brute Force
+        if dst_port == 23:
+            return {
+                'prediction': 'BruteForce',
+                'confidence': 0.85,
+                'severity': 2,
+                'description': 'Telnet Brute Force - attack on port 23 detected',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        
+        # RDP Brute Force
+        if dst_port == 3389:
+            return {
+                'prediction': 'BruteForce',
+                'confidence': 0.85,
+                'severity': 2,
+                'description': 'RDP Brute Force - attack on port 3389 detected',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        
+        # HTTP Flood (DoS)
+        if dst_port in [80, 443, 8080]:
+            if total_fwd >= 3 or flow_packets_ps > 10:
+                return {
+                    'prediction': 'DoS',
+                    'confidence': 0.86,
+                    'severity': 3,
+                    'description': 'HTTP Flood - DoS attack on web server',
+                    'is_threat': True,
+                    'detection_method': 'rule_based'
+                }
+        
+        # SYN Flood Detection
+        if syn_count >= 2 and ack_count < syn_count:
+            return {
+                'prediction': 'DoS',
+                'confidence': 0.88,
+                'severity': 3,
+                'description': 'SYN Flood - Denial of Service attack',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        
+        # DDoS Detection
+        if total_fwd >= 5 and flow_packets_ps > 50:
+            return {
+                'prediction': 'DDoS',
+                'confidence': 0.90,
+                'severity': 4,
+                'description': 'DDoS - High volume attack detected',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        
+        # Port Scan
+        if syn_count >= 1 and ack_count == 0:
+            return {
+                'prediction': 'PortScan',
+                'confidence': 0.85,
+                'severity': 1,
+                'description': 'Port scanning - SYN probe detected',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        if rst_count >= 1:
+            return {
+                'prediction': 'PortScan',
+                'confidence': 0.83,
+                'severity': 1,
+                'description': 'Port scanning - closed port detected',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        
+        # Botnet C2 Communication
+        if dst_port in [6667, 6668, 6669, 6697]:
+            return {
+                'prediction': 'Botnet',
+                'confidence': 0.82,
+                'severity': 4,
+                'description': 'Botnet activity - IRC C2 communication',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        
+        # DNS Amplification
+        if dst_port == 53:
+            return {
+                'prediction': 'DDoS',
+                'confidence': 0.80,
+                'severity': 3,
+                'description': 'Potential DNS amplification attack',
+                'is_threat': True,
+                'detection_method': 'rule_based'
+            }
+        
+        return None
     
     def predict(self, packet_data: Union[Dict, pd.DataFrame]) -> Dict:
         """
@@ -128,6 +275,14 @@ class ThreatPredictor:
                 'is_threat': bool           # Whether it's a threat
             }
         """
+        # First, try rule-based detection for immediate threat identification
+        if isinstance(packet_data, dict):
+            rule_result = self._rule_based_detection(packet_data)
+            if rule_result:
+                # Add empty probabilities for consistency
+                rule_result['probabilities'] = {rule_result['prediction']: rule_result['confidence']}
+                return rule_result
+        
         if not self.is_loaded:
             return {
                 'error': 'Model not loaded. Please train the model first.',

@@ -59,7 +59,7 @@ class PacketAnalyzer:
                 packet_info['protocol'] = 'TCP'
                 packet_info['src_port'] = packet[TCP].sport
                 packet_info['dst_port'] = packet[TCP].dport
-                packet_info['flags'] = packet[TCP].flags
+                packet_info['flags'] = str(packet[TCP].flags)
                 
                 # HTTP Detection
                 if Raw in packet:

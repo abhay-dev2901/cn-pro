@@ -11,6 +11,10 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeCharts();
     loadInterfaces();
     setupEventListeners();
+    
+    // Auto-start streaming for ML threat updates (even without capture)
+    startStreaming();
+    console.log('Dashboard initialized - Streaming started for ML updates');
 });
 
 function initializeCharts() {
@@ -263,6 +267,13 @@ function updateDashboard(data) {
         errorAlert.style.display = 'none';
     }
     
+    // ALWAYS update ML status and anomalies, even when not capturing
+    if (data.anomalies) {
+        updateAnomalies(data.anomalies);
+    }
+    updateMLStatus(data.ml_available, data.ml_stats);
+    
+    // Only update packet stats if capturing
     if (!data.is_capturing) {
         return;
     }
@@ -356,25 +367,41 @@ function updatePacketsTable(packets) {
 function updateAnomalies(anomalies) {
     const container = document.getElementById('anomalies-list');
     
-    if (anomalies.length === 0) {
+    if (!anomalies || anomalies.length === 0) {
         container.innerHTML = '<p class="text-muted">No anomalies detected</p>';
         return;
     }
     
+    // Map severity number to class and label
+    const getSeverityInfo = (severity) => {
+        if (typeof severity === 'number') {
+            if (severity >= 4) return { class: 'critical', label: 'Critical' };
+            if (severity >= 3) return { class: 'high', label: 'High' };
+            if (severity >= 2) return { class: 'medium', label: 'Medium' };
+            return { class: 'low', label: 'Low' };
+        }
+        // If it's a string, use it directly
+        const sev = String(severity || 'medium').toLowerCase();
+        return { class: sev, label: severity || 'Medium' };
+    };
+    
     // Reverse to show newest first
     const reversed = [...anomalies].reverse();
     container.innerHTML = reversed.map(anomaly => {
-        const severityClass = anomaly.severity?.toLowerCase() || 'medium';
-        const time = new Date(anomaly.timestamp).toLocaleTimeString();
-        const isML = anomaly.detection_method === 'ml' || anomaly.type?.startsWith('ML:');
-        const icon = isML ? '🤖' : '🔍';
+        const sevInfo = getSeverityInfo(anomaly.severity);
+        const time = anomaly.timestamp ? new Date(anomaly.timestamp).toLocaleTimeString() : 'Now';
+        const isML = anomaly.detection_method === 'ml' || (anomaly.type && anomaly.type.startsWith('ML:'));
+        const icon = isML ? '[ML]' : '[Rule]';
         
         // Handle both ML and rule-based anomalies
         let details = '';
         if (anomaly.ports_scanned) {
             details = `Ports scanned: ${anomaly.ports_scanned}`;
         } else if (anomaly.confidence) {
-            details = `Confidence: ${(anomaly.confidence * 100).toFixed(1)}%`;
+            const conf = typeof anomaly.confidence === 'number' && anomaly.confidence <= 1 
+                ? (anomaly.confidence * 100).toFixed(1) 
+                : anomaly.confidence;
+            details = `Confidence: ${conf}%`;
         }
         
         let destination = '';
@@ -386,10 +413,10 @@ function updateAnomalies(anomalies) {
         }
         
         return `
-            <div class="anomaly-item ${severityClass}">
-                <strong>${icon} ${anomaly.type}</strong> - ${time}<br>
-                <small>Source: ${anomaly.source_ip}${destination}</small><br>
-                <small>${details} | Severity: ${anomaly.severity || 'Medium'}</small>
+            <div class="anomaly-item ${sevInfo.class}" style="border-left: 4px solid ${isML ? '#dc3545' : '#ffc107'}; padding: 10px; margin-bottom: 10px; background: ${isML ? '#fff5f5' : '#fffbf0'};">
+                <strong>${icon} ${anomaly.type || 'Unknown'}</strong> - ${time}<br>
+                <small>Source: ${anomaly.source_ip || 'Unknown'}${destination}</small><br>
+                <small>${details} | Severity: ${sevInfo.label}</small>
                 ${anomaly.description ? `<br><small class="text-muted">${anomaly.description}</small>` : ''}
             </div>
         `;
@@ -401,22 +428,25 @@ function updateMLStatus(mlAvailable, mlStats) {
     const mlBadge = document.getElementById('ml-status-badge');
     const mlThreatsCount = document.getElementById('ml-threats-count');
     
+    // Debug logging - check browser console (F12)
+    console.log('ML Update:', { mlAvailable, threats: mlStats?.total_threats, breakdown: mlStats?.threat_breakdown });
+    
     if (mlBadge) {
         if (mlAvailable && mlStats) {
             const threats = mlStats.total_threats || 0;
             if (threats > 0) {
                 mlBadge.className = 'badge bg-danger ms-2';
-                mlBadge.textContent = `🤖 ML: ${threats} threats`;
+                mlBadge.textContent = `ML: ${threats} threats`;
             } else {
                 mlBadge.className = 'badge bg-success ms-2';
-                mlBadge.textContent = '🤖 ML Active';
+                mlBadge.textContent = 'ML Active';
             }
         } else if (mlAvailable) {
             mlBadge.className = 'badge bg-warning ms-2';
-            mlBadge.textContent = '🤖 ML Loading...';
+            mlBadge.textContent = 'ML Loading...';
         } else {
             mlBadge.className = 'badge bg-secondary ms-2';
-            mlBadge.textContent = '🤖 ML Disabled';
+            mlBadge.textContent = 'ML Disabled';
         }
     }
     

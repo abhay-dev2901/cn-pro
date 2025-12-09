@@ -46,10 +46,10 @@ class MLAnomalyDetector:
             try:
                 self.ml_detector = get_detector()
                 if not self.ml_detector.is_ready:
-                    print("⚠️ ML model not trained. Using rule-based detection.")
+                    print("ML model not trained. Using rule-based detection.")
                     self.use_ml = False
             except Exception as e:
-                print(f"⚠️ Could not initialize ML detector: {e}")
+                print(f"Could not initialize ML detector: {e}")
                 self.use_ml = False
         
         # Detection history
@@ -260,6 +260,6 @@ if __name__ == "__main__":
     for packet in test_packets:
         result = detector.analyze_packet(packet)
         if result:
-            print(f"\n🚨 Anomaly Detected: {result}")
+            print(f"\nAnomaly Detected: {result}")
     
     print(f"\nStatistics: {detector.get_statistics()}")

@@ -17,10 +17,10 @@ import time
 try:
     from ml.flask_integration import get_detector, analyze_packet_with_ml
     ML_AVAILABLE = True
-    print("✅ ML module loaded successfully")
+    print("ML module loaded successfully")
 except ImportError as e:
     ML_AVAILABLE = False
-    print(f"⚠️ ML module not available: {e}")
+    print(f"ML module not available: {e}")
 
 app = Flask(__name__)
 CORS(app)
@@ -33,9 +33,9 @@ ml_detector = None
 if ML_AVAILABLE:
     ml_detector = get_detector()
     if ml_detector.is_ready:
-        print("✅ ML model loaded and ready for predictions")
+        print("ML model loaded and ready for predictions")
     else:
-        print("⚠️ ML model not trained. Run: python -m ml.training_pipeline --quick")
+        print("ML model not trained. Run: python -m ml.training_pipeline --quick")
 
 # Global state
 capture_lock = threading.Lock()
@@ -203,14 +203,99 @@ def ml_predict():
     return jsonify(result)
 
 
+@app.route('/api/ml/simulate', methods=['POST'])
+def ml_simulate():
+    """
+    Simulate an attack and inject it into the frontend display
+    """
+    if not ML_AVAILABLE:
+        return jsonify({'error': 'ML module not available'}), 503
+    
+    detector = get_detector()
+    if not detector.is_ready:
+        return jsonify({'error': 'ML model not trained'}), 503
+    
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No attack data provided'}), 400
+    
+    # Analyze with ML
+    result = detector.analyze_packet(data)
+    
+    # If threat detected, add to capture anomalies for frontend
+    if result.get('is_threat'):
+        anomaly = {
+            'type': f"ML: {result['prediction']}",
+            'source_ip': data.get('source_ip', f"192.168.1.{hash(str(data)) % 255}"),
+            'destination_ip': data.get('destination_ip', '10.0.0.1'),
+            'destination_port': data.get('destination_port', 80),
+            'confidence': round(result.get('confidence', 0), 2),
+            'severity': result.get('severity', 2),
+            'description': result.get('description', ''),
+            'timestamp': datetime.now().isoformat(),
+            'detection_method': 'ml'
+        }
+        capture.anomalies.append(anomaly)
+        if len(capture.anomalies) > 1000:
+            capture.anomalies = capture.anomalies[-1000:]
+        result['injected'] = True
+    
+    return jsonify(result)
+
+
+@app.route('/api/ml/simulate/batch', methods=['POST'])
+def ml_simulate_batch():
+    """Simulate multiple attacks for demo"""
+    if not ML_AVAILABLE:
+        return jsonify({'error': 'ML module not available'}), 503
+    
+    attacks = [
+        {'name': 'DDoS', 'source_ip': '192.168.1.100', 'destination_port': 80, 'flow_packets_per_s': 50000, 'syn_flag_count': 100, 'ack_flag_count': 5},
+        {'name': 'Port Scan', 'source_ip': '10.0.0.50', 'destination_port': 22, 'total_fwd_packets': 2, 'syn_flag_count': 1, 'ack_flag_count': 0},
+        {'name': 'SSH Brute Force', 'source_ip': '172.16.0.25', 'destination_port': 22, 'total_fwd_packets': 10, 'psh_flag_count': 8},
+        {'name': 'DoS', 'source_ip': '192.168.2.50', 'destination_port': 80, 'flow_bytes_per_s': 500000, 'flow_packets_per_s': 500},
+        {'name': 'FTP Brute Force', 'source_ip': '10.10.10.10', 'destination_port': 21, 'total_fwd_packets': 5}
+    ]
+    
+    detector = get_detector()
+    results = []
+    
+    for attack in attacks:
+        result = detector.analyze_packet(attack)
+        if result.get('is_threat'):
+            anomaly = {
+                'type': f"ML: {result['prediction']}",
+                'source_ip': attack['source_ip'],
+                'destination_ip': '10.0.0.1',
+                'destination_port': attack.get('destination_port', 80),
+                'confidence': round(result.get('confidence', 0), 2),
+                'severity': result.get('severity', 2),
+                'description': result.get('description', ''),
+                'timestamp': datetime.now().isoformat(),
+                'detection_method': 'ml'
+            }
+            capture.anomalies.append(anomaly)
+        
+        results.append({
+            'attack': attack['name'],
+            'detected': result.get('is_threat', False),
+            'prediction': result.get('prediction'),
+            'confidence': result.get('confidence')
+        })
+    
+    return jsonify({'message': f'Simulated {len(attacks)} attacks', 'results': results, 'threats_injected': sum(1 for r in results if r['detected'])})
+
+
 @app.route('/api/stream')
 def stream_data():
     """Server-Sent Events stream for real-time updates"""
     def generate():
         while True:
+            # Count ML threats from anomalies
+            ml_anomalies = [a for a in capture.anomalies if a.get('detection_method') == 'ml' or 'ML:' in str(a.get('type', ''))]
+            
             if capture.is_capturing:
                 stats = capture.get_stats()
-                # Include error if any
                 error = capture.get_last_error()
                 if error:
                     stats['error'] = error
@@ -218,29 +303,40 @@ def stream_data():
                 data = {
                     'stats': stats,
                     'recent_packets': capture.get_recent_packets(10),
-                    'anomalies': capture.get_anomalies(5),
+                    'anomalies': capture.get_anomalies(10),
                     'is_capturing': True
                 }
-                
-                # Add ML statistics if available
-                if ML_AVAILABLE and ml_detector and ml_detector.is_ready:
-                    data['ml_stats'] = ml_detector.get_statistics()
-                    data['ml_threats'] = ml_detector.get_recent_threats(5)
-                    data['ml_available'] = True
-                else:
-                    data['ml_available'] = False
             else:
                 error = capture.get_last_error()
                 data = {
                     'is_capturing': False,
                     'stats': {'error': error} if error else {},
                     'recent_packets': [],
-                    'anomalies': [],
+                    'anomalies': capture.get_anomalies(10),  # Show anomalies even when not capturing
                     'ml_available': ML_AVAILABLE
                 }
             
+            # ALWAYS add ML statistics
+            if ML_AVAILABLE and ml_detector and ml_detector.is_ready:
+                # Use total_ml_threats for accurate count (not capped by anomaly list limit)
+                total_threats = getattr(capture, 'total_ml_threats', 0)
+                threat_breakdown = getattr(capture, 'ml_threat_breakdown', {}).copy()
+                
+                ml_stats = {
+                    'total_threats': total_threats,
+                    'threat_breakdown': threat_breakdown,
+                    'model_loaded': True
+                }
+                
+                data['ml_stats'] = ml_stats
+                data['ml_threats'] = ml_anomalies[-5:]
+                data['ml_available'] = True
+            else:
+                data['ml_available'] = False
+                data['ml_stats'] = {'total_threats': 0, 'threat_breakdown': {}}
+            
             yield f"data: {json.dumps(data)}\n\n"
-            time.sleep(1)  # Update every second
+            time.sleep(1)
             
     return Response(generate(), mimetype='text/event-stream')
 

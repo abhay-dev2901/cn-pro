@@ -225,7 +225,7 @@ Key features expected by the model:
 
 ### Model not found
 ```
-⚠️ Model not found at ml/model.pkl
+Warning: Model not found at ml/model.pkl
 ```
 **Solution:** Run training pipeline first:
 ```bash

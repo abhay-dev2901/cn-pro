@@ -8,7 +8,7 @@ A lightweight, web-based Network Traffic Analyzer that captures and parses packe
 - **Interactive Dashboard**: Visual charts for protocol distribution, bandwidth, and metrics
 - **Metrics**: Throughput, latency, packet loss
 - **Anomaly Detection**: Port scan detection
-- **🤖 ML-Based Threat Detection**: DDoS, Brute Force, Port Scans, Web Attacks, Botnet, and more
+- **ML-Based Threat Detection**: DDoS, Brute Force, Port Scans, Web Attacks, Botnet, and more
 - **Export**: CSV, JSON, and PCAP formats
 - **User-Friendly**: Simple start/stop controls and filters
 

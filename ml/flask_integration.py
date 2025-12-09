@@ -265,5 +265,5 @@ if __name__ == "__main__":
         print("="*50)
         print(FLASK_ROUTES_EXAMPLE)
     else:
-        print("\n⚠️ Model not loaded. Train the model first:")
+        print("\nModel not loaded. Train the model first:")
         print("  cd ml && python training_pipeline.py --quick")

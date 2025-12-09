@@ -138,7 +138,7 @@ class ModelTrainer:
         print(f"{'Training Time':<20} {metrics['train_time']:<12.2f}s")
         print("-"*32)
         
-        print(f"\n🌲 Using Random Forest Model (F1 Score: {metrics['f1']:.4f})")
+        print(f"\nUsing Random Forest Model (F1 Score: {metrics['f1']:.4f})")
         
         self.best_model_name = "RandomForest"
         self.best_model = self.models['RandomForest']
@@ -194,7 +194,7 @@ class ModelTrainer:
         }
         
         joblib.dump(model_data, filepath)
-        print(f"\n✅ Model saved to: {filepath}")
+        print(f"\nModel saved to: {filepath}")
 
 
 def run_training_pipeline(
@@ -217,47 +217,47 @@ def run_training_pipeline(
     print("="*70)
     
     # Step 1: Load data
-    print("\n📂 STEP 1: Loading Dataset")
+    print("\nSTEP 1: Loading Dataset")
     print("-"*40)
     df = load_all_datasets(data_dir, sample_per_file=sample_per_file)
     
     # Step 2: Map to categories
-    print("\n🏷️ STEP 2: Mapping Labels to Categories")
+    print("\nSTEP 2: Mapping Labels to Categories")
     print("-"*40)
     df = map_to_categories(df)
     print("\nCategory Distribution:")
     print(get_category_distribution(df).to_string(index=False))
     
     # Step 3: Preprocess
-    print("\n⚙️ STEP 3: Preprocessing Data")
+    print("\nSTEP 3: Preprocessing Data")
     print("-"*40)
     preprocessor = DataPreprocessor(use_important_features_only=use_important_features)
     X, y = preprocessor.fit_transform(df)
     
     # Step 4: Split data
-    print("\n✂️ STEP 4: Splitting Data")
+    print("\nSTEP 4: Splitting Data")
     print("-"*40)
     X_train, X_val, X_test, y_train, y_val, y_test = prepare_train_test_split(X, y)
     
     # Step 5: Train models
-    print("\n🚀 STEP 5: Training Models")
+    print("\nSTEP 5: Training Models")
     print("-"*40)
     trainer = ModelTrainer()
     trainer.train_all_models(X_train, y_train, X_val, y_val)
     
     # Step 6: Select best model
-    print("\n🎯 STEP 6: Selecting Best Model")
+    print("\nSTEP 6: Selecting Best Model")
     print("-"*40)
     trainer.select_best_model()
     
     # Step 7: Final evaluation
-    print("\n📊 STEP 7: Final Evaluation")
+    print("\nSTEP 7: Final Evaluation")
     print("-"*40)
     class_labels = preprocessor.get_class_labels()
     trainer.evaluate_on_test(X_test, y_test, class_labels)
     
     # Step 8: Save model and preprocessor
-    print("\n💾 STEP 8: Saving Model and Preprocessor")
+    print("\nSTEP 8: Saving Model and Preprocessor")
     print("-"*40)
     os.makedirs(output_dir, exist_ok=True)
     
@@ -268,7 +268,7 @@ def run_training_pipeline(
     preprocessor.save(preprocessor_path)
     
     print("\n" + "="*70)
-    print("  ✅ TRAINING COMPLETE!")
+    print("  TRAINING COMPLETE")
     print("="*70)
     print(f"\nModel saved to: {model_path}")
     print(f"Preprocessor saved to: {preprocessor_path}")
