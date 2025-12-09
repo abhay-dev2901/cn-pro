@@ -224,8 +224,9 @@ def ml_simulate():
     
     # If threat detected, add to capture anomalies for frontend
     if result.get('is_threat'):
+        threat_type = result['prediction']
         anomaly = {
-            'type': f"ML: {result['prediction']}",
+            'type': f"ML: {threat_type}",
             'source_ip': data.get('source_ip', f"192.168.1.{hash(str(data)) % 255}"),
             'destination_ip': data.get('destination_ip', '10.0.0.1'),
             'destination_port': data.get('destination_port', 80),
@@ -238,6 +239,11 @@ def ml_simulate():
         capture.anomalies.append(anomaly)
         if len(capture.anomalies) > 1000:
             capture.anomalies = capture.anomalies[-1000:]
+        
+        # Update ML threat counters
+        capture.total_ml_threats += 1
+        capture.ml_threat_breakdown[threat_type] = capture.ml_threat_breakdown.get(threat_type, 0) + 1
+        
         result['injected'] = True
     
     return jsonify(result)
@@ -263,8 +269,9 @@ def ml_simulate_batch():
     for attack in attacks:
         result = detector.analyze_packet(attack)
         if result.get('is_threat'):
+            threat_type = result['prediction']
             anomaly = {
-                'type': f"ML: {result['prediction']}",
+                'type': f"ML: {threat_type}",
                 'source_ip': attack['source_ip'],
                 'destination_ip': '10.0.0.1',
                 'destination_port': attack.get('destination_port', 80),
@@ -275,6 +282,10 @@ def ml_simulate_batch():
                 'detection_method': 'ml'
             }
             capture.anomalies.append(anomaly)
+            
+            # Update ML threat counters
+            capture.total_ml_threats += 1
+            capture.ml_threat_breakdown[threat_type] = capture.ml_threat_breakdown.get(threat_type, 0) + 1
         
         results.append({
             'attack': attack['name'],
